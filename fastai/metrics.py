@@ -1,11 +1,8 @@
 from .imports import *
 from .torch_imports import *
 
-def top_k(gen_preds_targs, n_batches, ks, cat):
-    assert n_batches
-    assert ks
-    assert cat <= len(ks)
-
+def top_k(gen_preds_targs, n_batches, ks, cat=None):
+    cat = cat if cat else len(cat)
     sorted_ks = sorted([k * -1 for k in ks])
     min_k = sorted_ks[0]
     batch_count = 0
