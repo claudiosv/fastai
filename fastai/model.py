@@ -228,11 +228,11 @@ def validate(stepper, dl, metrics, seq_first=False):
 
 def get_prediction(x):
     if is_listy(x): x=x[0]
-    return x.data
+    return x.data if isinstance(x, Variable) else x
 
 def predict(m, dl):
-    preda,_ = predict_with_targs_(m, dl)
-    return np.concatenate(preda)
+    for preda,_,_ in predict_with_targs_(m, dl):
+        yield np.concatenate(preda)
 
 def predict_batch(m, x):
     m.eval()
@@ -242,13 +242,13 @@ def predict_batch(m, x):
 def predict_with_targs_(m, dl):
     m.eval()
     if hasattr(m, 'reset'): m.reset()
-    res = []
-    for *x,y in iter(dl): res.append([get_prediction(to_np(m(*VV(x)))),to_np(y)])
-    return zip(*res)
+    for *x,y in iter(dl):
+        input = to_np(x)
+        pair = [get_prediction(to_np(m(*VV(x)))),to_np(y), input]
+        yield pair
 
 def predict_with_targs(m, dl):
-    preda,targa = predict_with_targs_(m, dl)
-    return np.concatenate(preda), np.concatenate(targa)
+    return predict_with_targs_(m, dl)
 
 # From https://github.com/ncullen93/torchsample
 def model_summary(m, inputs):

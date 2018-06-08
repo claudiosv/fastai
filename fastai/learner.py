@@ -357,11 +357,13 @@ class Learner():
         return predict(m, dl)
 
     def predict_with_targs(self, is_test=False, use_swa=False):
-        dl = self.data.test_dl if is_test else self.data.val_dl
+        dl = self.data.test_dl if is_test else self.data.trn_dl
         m = self.swa_model if use_swa else self.model
-        return predict_with_targs(m, dl)
+        return predict_with_targs(m, dl), len(dl)
 
-    def predict_dl(self, dl): return predict_with_targs(self.model, dl)[0]
+    def predict_dl(self, dl):
+        for pred_a, _, _ in predict_with_targs(self.model, dl):
+            yield pred_a
 
     def predict_array(self, arr):
         self.model.eval()
@@ -387,9 +389,11 @@ class Learner():
         """
         dl1 = self.data.test_dl     if is_test else self.data.val_dl
         dl2 = self.data.test_aug_dl if is_test else self.data.aug_dl
-        preds1,targs = predict_with_targs(self.model, dl1)
+        list_from_predict_with_targs_dl1 = [a for a in predict_with_targs(self.model, dl1)]
+        list_from_predict_with_targs_dl2 = [a for a in predict_with_targs(self.model, dl2)]
+        preds1,targs,_ = zip(*list_from_predict_with_targs_dl1)
         preds1 = [preds1]*math.ceil(n_aug/4)
-        preds2 = [predict_with_targs(self.model, dl2)[0] for i in tqdm(range(n_aug), leave=False)]
+        preds2 = [list_from_predict_with_targs_dl2[0] for i in tqdm(range(n_aug), leave=False)]
         return np.stack(preds1+preds2), targs
 
     def fit_opt_sched(self, phases, cycle_save_name=None, best_save_name=None, stop_div=False, data_list=None, callbacks=None, 
