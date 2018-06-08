@@ -43,7 +43,7 @@ def accuracy_np(preds, targs):
 
 def accuracy(preds, targs):
     preds = torch.max(preds, dim=1)[1]
-    return (preds==targs).float().mean()
+    return (preds == (targs.data if isinstance(targs, Variable) else targs)).float().mean()
 
 def accuracy_np(preds, targs):
     preds = np.argmax(preds, 1)
