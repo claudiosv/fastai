@@ -186,7 +186,7 @@ class LR_Finder(LR_Updater):
         if (loss<self.best and self.iteration>10): self.best=loss
         return super().on_batch_end(metrics)
 
-    def plot(self, n_skip=10, n_skip_end=5):
+    def plot(self, file_path, n_skip=10, n_skip_end=5):
         '''
         Plots the loss function with respect to learning rate, in log scale. 
         '''
@@ -194,6 +194,7 @@ class LR_Finder(LR_Updater):
         plt.xlabel("learning rate (log scale)")
         plt.plot(self.lrs[n_skip:-(n_skip_end+1)], self.losses[n_skip:-(n_skip_end+1)])
         plt.xscale('log')
+        plt.savefig(file_path)
 
 class LR_Finder2(LR_Finder):
     """
