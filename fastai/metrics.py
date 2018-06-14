@@ -1,3 +1,4 @@
+from fastai.core import to_np
 from .imports import *
 from .torch_imports import *
 
@@ -5,6 +6,36 @@ from .torch_imports import *
 # *    torch preds/log_preds
 # *_np numpy preds/log_preds
 #
+
+def mrr_non_interactive(preds, targs):
+    summ = .0
+    total = to_np(preds).shape[0]
+    for pred, targ in zip(to_np(preds), to_np(targs)):
+        rank = find_sorted_array_position(pred, pred[targ])
+        summ += float(1) / rank
+    return summ / total
+
+def MRR(gen_preds_targs, n_batches):
+    batch_count = 0
+    count_all=0
+    summ = .0
+    tqdm1 = tqdm(gen_preds_targs, leave=False, total=n_batches)
+    for pred, targ, input in tqdm1:
+        for i_in_batch, (pr, t) in enumerate(zip(pred, targ)):
+            rank = find_sorted_array_position(pr, pr[t])
+            summ += float(1) / rank
+            count_all +=1
+        batch_count += 1
+        temporary_result = {"mrr": f"{summ/count_all:.3}"}
+        tqdm1.set_postfix(**temporary_result)
+    return temporary_result
+
+def find_sorted_array_position(np_array, value):
+    count = 1
+    for elm in np_array:
+        if elm > value:
+            count += 1
+    return count
 
 def top_k(gen_preds_targs, n_batches, ks, cat=None):
     cat = cat if cat else len(cat)
