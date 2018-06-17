@@ -2,6 +2,9 @@ from fastai.core import to_np
 from .imports import *
 from .torch_imports import *
 
+from sklearn.metrics import fbeta_score
+
+
 # There are 2 versions of each metrics function, depending on the type of the prediction tensor:
 # *    torch preds/log_preds
 # *_np numpy preds/log_preds
@@ -132,3 +135,9 @@ def fbeta_np(preds, targs, beta, thresh=0.5, epsilon=1e-8):
 
 def f1(log_preds, targs, thresh=0.5): return fbeta(log_preds, targs, 1, thresh)
 def f1_np(preds, targs, thresh=0.5): return fbeta_np(preds, targs, 1, thresh)
+
+def f2(preds, targs):
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        preds = torch.max(preds, dim=1)[1]
+        return fbeta_score(targs.data, preds, 2, average='weighted')
