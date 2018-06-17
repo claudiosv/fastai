@@ -2,6 +2,8 @@ from fastai.core import to_np
 from .imports import *
 from .torch_imports import *
 
+from sklearn.metrics import fbeta_score
+
 def mrr_non_interactive(preds, targs):
     summ = .0
     total = to_np(preds).shape[0]
@@ -102,3 +104,9 @@ def fbeta(preds, targs, beta, thresh=0.5):
     return (1 + beta2) * prec * rec / (beta2 * prec + rec)
 
 def f1(preds, targs, thresh=0.5): return fbeta(preds, targs, 1, thresh)
+
+def f2(preds, targs):
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        preds = torch.max(preds, dim=1)[1]
+        return fbeta_score(targs.data, preds, 2, average='weighted')
