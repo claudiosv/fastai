@@ -105,8 +105,4 @@ def fbeta(preds, targs, beta, thresh=0.5):
 
 def f1(preds, targs, thresh=0.5): return fbeta(preds, targs, 1, thresh)
 
-def f2(preds, targs):
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore")
-        preds = torch.max(preds, dim=1)[1]
-        return fbeta_score(targs.data, preds, 2, average='weighted')
+def f2(preds, targs): return fbeta(preds, targs, 2)
