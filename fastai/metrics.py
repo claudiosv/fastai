@@ -1,8 +1,6 @@
-from fastai.core import to_np
 from .imports import *
 from .torch_imports import *
 
-from sklearn.metrics import fbeta_score
 
 
 # There are 2 versions of each metrics function, depending on the type of the prediction tensor:
@@ -17,6 +15,11 @@ def mrr_non_interactive(preds, targs):
         rank = find_sorted_array_position(pred, pred[targ])
         summ += float(1) / rank
     return summ / total
+def mrr(preds, targs):
+    if isinstance(targs, Variable): targs = targs.data
+    pred_values = preds.gather(1, targs.view(-1, 1))
+    guessed_positions = find_sorted_array_position_tensor(preds, pred_values)
+    return torch.mean(torch.reciprocal(guessed_positions.float()))
 
 def MRR(gen_preds_targs, n_batches):
     batch_count = 0
@@ -39,6 +42,11 @@ def find_sorted_array_position(np_array, value):
         if elm > value:
             count += 1
     return count
+
+
+def find_sorted_array_position_tensor(tensor, values_tensor):
+    dim0, dim1 = tensor.shape
+    return torch.sum(tensor > values_tensor.resize_((dim0, 1)).expand(dim0, dim1), 1).add(1)
 
 def top_k(gen_preds_targs, n_batches, ks, cat=None):
     cat = cat if cat else len(cat)
