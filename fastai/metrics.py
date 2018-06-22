@@ -5,8 +5,10 @@ from .torch_imports import *
 def mrr(preds, targs):
     if isinstance(targs, Variable): targs = targs.data
     pred_values = preds.gather(1, targs.view(-1, 1))
-    guessed_positions = find_sorted_array_position_tensor(preds, pred_values)
-    return torch.mean(torch.reciprocal(guessed_positions.float()))
+    guessed_positions = find_sorted_array_position_tensor(preds, pred_values).float()
+    reciprocal = torch.reciprocal(guessed_positions)
+    return torch.mean(reciprocal)
+
 
 def MRR(gen_preds_targs, n_batches):
     batch_count = 0
@@ -33,7 +35,9 @@ def find_sorted_array_position(np_array, value):
 
 def find_sorted_array_position_tensor(tensor, values_tensor):
     dim0, dim1 = tensor.shape
-    return torch.sum(tensor > values_tensor.resize_((dim0, 1)).expand(dim0, dim1), 1).add(1)
+    expanded_values_tensor = values_tensor.resize_((dim0, 1)).expand(dim0, dim1)
+    position_of_value = torch.sum((tensor > expanded_values_tensor).long(), 1)
+    return position_of_value.add(1)
 
 def top_k(gen_preds_targs, n_batches, ks, cat=None):
     cat = cat if cat else len(cat)
