@@ -228,7 +228,7 @@ class LanguageModelData():
             >> learner.fit(3e-3, 4, wds=1e-6, cycle_len=1, cycle_mult=2)
 
     """
-    def __init__(self, path, field, trn_ds, val_ds, test_ds, bs, bptt, backwards=False, **kwargs):
+    def __init__(self, path, field, trn_ds, val_ds, test_ds, bs, validation_bs, bptt, backwards=False, **kwargs):
         """ Constructor for the class. An important thing that happens here is
             that the field's "build_vocab" method is invoked, which builds the vocabulary
             for this NLP model.
@@ -248,16 +248,16 @@ class LanguageModelData():
                 kwargs: other arguments
         """
         self.bs = bs
+        self.validation_bs = validation_bs
         self.path = path
         self.trn_ds = trn_ds; self.val_ds = val_ds; self.test_ds = test_ds
         if not hasattr(field, 'vocab'): field.build_vocab(self.trn_ds, **kwargs)
 
         self.pad_idx = field.vocab.stoi[field.pad_token]
         self.nt = len(field.vocab)
-
         factory = lambda ds: LanguageModelLoader(ds, bs, bptt, backwards=backwards)
         self.trn_dl = factory(self.trn_ds)
-        self.val_dl = factory(self.val_ds)
+        self.val_dl = LanguageModelLoader(self.val_ds, validation_bs, bptt, backwards=backwards)
         self.test_dl = map_none(self.test_ds, factory)  # not required
 
     def get_model(self, opt_fn, emb_sz, n_hid, n_layers, **kwargs):
@@ -279,10 +279,10 @@ class LanguageModelData():
         return RNN_Learner(self, model, opt_fn=opt_fn)
 
     @classmethod
-    def from_dataframes(cls, path, field, col, train_df, val_df, test_df=None, bs=64, bptt=70, **kwargs):
+    def from_dataframes(cls, path, field, col, train_df, val_df, test_df=None, bs=64, validation_bs=64, bptt=70, **kwargs):
         trn_ds, val_ds, test_ds = ConcatTextDatasetFromDataFrames.splits(
             text_field=field, col=col, train_df=train_df, val_df=val_df, test_df=test_df, keep_nones=True)
-        return cls(path, field, trn_ds, val_ds, test_ds, bs, bptt, **kwargs)
+        return cls(path, field, trn_ds, val_ds, test_ds, bs, validation_bs, bptt, **kwargs)
 
     @classmethod
     def from_text_files(cls, path, field, train, validation, test=None, bs=64, bptt=70, **kwargs):
