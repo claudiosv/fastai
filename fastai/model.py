@@ -61,7 +61,7 @@ class Stepper():
         if self.clip:   # Gradient clipping
             if IS_TORCH_04: nn.utils.clip_grad_norm_(trainable_params_(self.m), self.clip)
             else: nn.utils.clip_grad_norm(trainable_params_(self.m), self.clip)
-        if 'wd' in self.opt.param_groups[0] and self.opt.param_groups[0]['wd'] != 0: 
+        if 'wd' in self.opt.param_groups[0] and self.opt.param_groups[0]['wd'] != 0:
             #Weight decay out of the loss. After the gradient computation but before the step.
             for group in self.opt.param_groups:
                 lr, wd = group['lr'], group['wd']
@@ -77,6 +77,13 @@ class Stepper():
         preds = self.m(*xs)
         if isinstance(preds,tuple): preds=preds[0]
         return preds, self.crit(preds, y)
+
+    def evaluate_with_cache(self, xs, y):
+        preds = self.m(*xs)
+        if not isinstance(preds, tuple):
+            raise ValueError("Model output is not a tuple")
+        preds, raw_outputs, _ = preds
+        return preds, raw_outputs, self.crit(preds, y), y
 
 def set_train_mode(m):
     if (hasattr(m, 'running_mean') and (getattr(m,'bn_freeze',False)
@@ -159,7 +166,7 @@ def fit(model, data, n_epochs, opt, crit, metrics=None, callbacks=None, stepper=
                     break
 
         if not all_val:
-            vals = validate(model_stepper, cur_data.val_dl, metrics, epoch, seq_first=seq_first, validate_skip = validate_skip)
+            vals = validate_with_cache(model_stepper, cur_data.val_dl, metrics)
             stop=False
             for cb in callbacks: stop = stop or cb.on_epoch_end(vals)
             if swa_model is not None:
@@ -168,7 +175,7 @@ def fit(model, data, n_epochs, opt, crit, metrics=None, callbacks=None, stepper=
                     swa_vals = validate(swa_stepper, cur_data.val_dl, metrics, epoch, validate_skip = validate_skip)
                     vals += swa_vals
 
-            if epoch > 0: 
+            if epoch > 0:
                 print_stats(epoch, [debias_loss] + vals, visualize, prev_val)
             else:
                 print(layout.format(*names))
@@ -189,10 +196,10 @@ def print_stats(epoch, values, visualize, prev_val=[], decimals=6):
     values = [epoch] + list(np.round(values, decimals))
     sym = ""
     if visualize:
-        if epoch == 0:                                             pass        
+        if epoch == 0:                                             pass
         elif values[1] > prev_val[0] and values[2] > prev_val[1]:  sym = " △ △"
-        elif values[1] > prev_val[0] and values[2] < prev_val[1]:  sym = " △ ▼"            
-        elif values[1] < prev_val[0] and values[2] > prev_val[1]:  sym = " ▼ △"            
+        elif values[1] > prev_val[0] and values[2] < prev_val[1]:  sym = " △ ▼"
+        elif values[1] < prev_val[0] and values[2] > prev_val[1]:  sym = " ▼ △"
         elif values[1] < prev_val[0] and values[2] < prev_val[1]:  sym = " ▼ ▼"
     print(layout.format(*values) + sym)
 
@@ -229,6 +236,70 @@ def batch_sz(x, seq_first=False):
 
 def validate(stepper, dl, metrics, epoch, seq_first=False, validate_skip = 0):
     if epoch < validate_skip: return [float('nan')] + [float('nan')] * len(metrics)
+
+def one_hot(idx, size, cuda=False):
+    a = np.zeros((1, size), np.float32)
+    a[0][idx] = 1
+    v = Variable(torch.from_numpy(a))
+    if cuda: v = v.cuda()
+    return v
+
+
+def validate_with_cache(stepper, dl, metrics):
+    batch_cnts, losses, res = [], [], []
+    stepper.reset(False)
+    with no_grad_context():
+        next_word_history = None
+        pointer_history = None
+        for (*x, y) in iter(dl):
+            batch_size = x[0].size(1)
+            preds, raw_outputs, l, targets = stepper.evaluate_with_cache(VV(x), VV(y))
+            ntokens = preds.size(1)
+            rnn_out = raw_outputs[-1].squeeze(1)  # from last layer
+            print(rnn_out.dim())
+            output_flat = preds.view(-1, ntokens)
+            window = output_flat.size(0)
+            # Fill pointer history
+            start_idx = len(next_word_history) if next_word_history is not None else 0
+            next_word_history = torch.cat(
+                [one_hot(t.data[0], ntokens) for t in targets]) if next_word_history is None else torch.cat(
+                [next_word_history, torch.cat([one_hot(t.data[0], ntokens) for t in targets])])
+            # print(next_word_history)
+            pointer_history = Variable(rnn_out.data) if pointer_history is None else torch.cat(
+                [pointer_history, Variable(rnn_out.data)], dim=0)
+
+            loss = 0
+            softmax_output_flat = torch.nn.functional.softmax(output_flat)
+            preds_with_cache = []
+            for idx, vocab_loss in enumerate(softmax_output_flat):
+                p = vocab_loss
+                if start_idx + idx > window:
+                    valid_next_word = next_word_history[start_idx + idx - window:start_idx + idx]
+                    valid_pointer_history = pointer_history[start_idx + idx - window:start_idx + idx]
+                    logits = torch.mv(valid_pointer_history, rnn_out[idx])
+                    theta = 0
+                    ptr_attn = torch.nn.functional.softmax(theta * logits).view(-1, 1)
+                    ptr_dist = (ptr_attn.expand_as(valid_next_word) * valid_next_word).sum(0).squeeze()
+                    lambdah = 0.5
+                    p = lambdah * ptr_dist + (1 - lambdah) * vocab_loss
+                ###
+                target_loss = p[targets[idx].data]
+                loss += (-torch.log(target_loss)).data[0]
+                preds_with_cache.append(p)
+            loss = loss / softmax_output_flat.size(0)
+            losses.append(to_np(V(loss)))
+            ###
+            # hidden = repackage_hidden(hidden)
+            next_word_history = next_word_history[-window:]
+            pointer_history = pointer_history[-window:]
+
+            batch_cnts.append(batch_size)
+            res.append([f(torch.stack(preds_with_cache).data, y) for f in metrics])
+
+    return [np.average(losses, 0, weights=batch_cnts)] + list(np.average(np.stack(res), 0, weights=batch_cnts))
+
+
+def validate(stepper, dl, metrics, seq_first=False):
     batch_cnts,loss,res = [],[],[]
     stepper.reset(False)
     with no_grad_context():
