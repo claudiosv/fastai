@@ -1,15 +1,8 @@
-from .imports import *
-from .torch_imports import *
-from .core import *
-from .model import *
-from .dataset import *
-from .learner import *
-from .text import *
-from .lm_rnn import *
+from logging import DEBUG
 
-from sklearn.feature_extraction.text import CountVectorizer
-from sklearn.model_selection import train_test_split
-from torchtext.datasets import language_modeling
+from .lm_rnn import *
+from .text import *
+
 
 class DotProdNB(nn.Module):
     def __init__(self, nf, ny, w_adj=0.4, r_adj=10):
@@ -184,8 +177,11 @@ class ConcatTextDatasetFromDataFrames(torchtext.data.Dataset):
     def __init__(self, df, text_field, col, newline_eos=True, **kwargs):
         fields = [('text', text_field)]
         text = []
-
+        import logging
+        logging.basicConfig(level = DEBUG)
+        logging.info("Starting preprocessing")
         text += text_field.preprocess(df[col].str.cat(sep=' <eos> '))
+        logging.info("StarFinishedting preprocessing")
         if (newline_eos): text.append('<eos>')
 
         examples = [torchtext.data.Example.fromlist([text], fields)]
