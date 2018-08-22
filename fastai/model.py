@@ -1,9 +1,5 @@
-from .imports import *
-from .torch_imports import *
-from .core import *
-from .layer_optimizer import *
-from .swa import *
 from .fp16 import *
+from .swa import *
 
 IS_TORCH_04 = LooseVersion(torch.__version__) >= LooseVersion('0.4')
 
@@ -83,6 +79,8 @@ class Stepper():
         if not isinstance(preds, tuple):
             raise ValueError("Model output is not a tuple")
         preds, raw_outputs, _ = preds
+        if not isinstance(raw_outputs, list):
+            raise AssertionError("Raw output should be a list!")
         return preds, raw_outputs, self.crit(preds, y), y
 
 def set_train_mode(m):
@@ -253,10 +251,11 @@ def validate_with_cache(stepper, dl, metrics):
         pointer_history = None
         for (*x, y) in iter(dl):
             batch_size = x[0].size(1)
+            if batch_size != 1:
+                raise ValueError("For now only batch size 1 is supported for validation with cache")
             preds, raw_outputs, l, targets = stepper.evaluate_with_cache(VV(x), VV(y))
             ntokens = preds.size(1)
             rnn_out = raw_outputs[-1].squeeze(1)  # from last layer
-            print(rnn_out.dim())
             output_flat = preds.view(-1, ntokens)
             window = output_flat.size(0)
             # Fill pointer history
@@ -289,7 +288,7 @@ def validate_with_cache(stepper, dl, metrics):
             loss = loss / softmax_output_flat.size(0)
             losses.append(to_np(V(loss)))
             ###
-            # hidden = repackage_hidden(hidden)
+            #hidden = repackage_hidden(hidden)
             next_word_history = next_word_history[-window:]
             pointer_history = pointer_history[-window:]
 
