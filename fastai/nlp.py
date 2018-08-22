@@ -1,6 +1,5 @@
 from logging import DEBUG
 
-from .lm_rnn import *
 from .text import *
 
 
@@ -111,11 +110,16 @@ def flip_tensor(x, dim):
 
 class LanguageModelLoader():
 
-    def __init__(self, ds, bs, bptt, backwards=False):
+    def __init__(self, ds_gen, bs, bptt, backwards=False):
         self.bs,self.bptt,self.backwards = bs,bptt,backwards
-        text = sum([o.text for o in ds], [])
-        fld = ds.fields['text']
-        nums = fld.numericalize([text],device=None if torch.cuda.is_available() else -1)
+        nums = None
+        fld = ds_gen.fields['text']
+        for ds in ds_gen:
+            func, loc = ds.text
+            preprocessed_df_gen = func(loc)
+            for text in preprocessed_df_gen:
+                nums_chunk = fld.numericalize([text],device=None if torch.cuda.is_available() else -1)
+                nums = torch.cat([nums, nums_chunk]) if nums is not None else nums_chunk
         self.data = self.batchify(nums)
         self.i,self.iter = 0,0
         self.n = len(self.data)
@@ -174,26 +178,28 @@ class ConcatTextDataset(torchtext.data.Dataset):
 
 
 class ConcatTextDatasetFromDataFrames(torchtext.data.Dataset):
-    def __init__(self, df, text_field, col, newline_eos=True, **kwargs):
+    def __init__(self, create_df_gen_func, df_location, text_field, col, newline_eos=True, **kwargs):
         fields = [('text', text_field)]
-        text = []
         import logging
         logging.basicConfig(level = DEBUG)
-        logging.info("Starting preprocessing")
-        text += text_field.preprocess(df[col].str.cat(sep=' <eos> '))
-        logging.info("StarFinishedting preprocessing")
-        if (newline_eos): text.append('<eos>')
 
-        examples = [torchtext.data.Example.fromlist([text], fields)]
+        def preprocessed_data_gen(df_location):
+            for df in create_df_gen_func(df_location):
+                text = []
+                text += text_field.preprocess(df[col].str.cat(sep=' <eos> '))
+                if (newline_eos): text.append('<eos>')
+                yield text
+
+        examples = [torchtext.data.Example.fromlist([(preprocessed_data_gen, df_location)], fields)]
 
         super().__init__(examples, fields, **kwargs)
 
     @classmethod
-    def splits(cls, train_df=None, val_df=None, test_df=None, keep_nones=False, **kwargs):
+    def splits(cls, gen_func=None, train_df_gen=None, val_df_gen=None, test_df_gen=None, keep_nones=False, **kwargs):
         res = (
-            cls(train_df, **kwargs),
-            cls(val_df, **kwargs),
-            map_none(test_df, partial(cls, **kwargs)))  # not required
+            cls(gen_func, train_df_gen, **kwargs),
+            cls(gen_func, val_df_gen, **kwargs),
+            map_none((gen_func, test_df_gen), partial(cls, **kwargs)))  # not required
         return res if keep_nones else tuple(d for d in res if d is not None)
 
 
@@ -254,7 +260,7 @@ class LanguageModelData():
         factory = lambda ds: LanguageModelLoader(ds, bs, bptt, backwards=backwards)
         self.trn_dl = factory(self.trn_ds)
         self.val_dl = LanguageModelLoader(self.val_ds, validation_bs, bptt, backwards=backwards)
-        self.test_dl = map_none(self.test_ds, factory)  # not required
+        self.test_dl = map_none([self.test_ds], factory)  # not required
 
     def get_model(self, opt_fn, emb_sz, n_hid, n_layers, **kwargs):
         """ Method returns a RNN_Learner object, that wraps an instance of the RNN_Encoder module.
@@ -275,9 +281,9 @@ class LanguageModelData():
         return RNN_Learner(self, model, opt_fn=opt_fn)
 
     @classmethod
-    def from_dataframes(cls, path, field, col, train_df, val_df, test_df=None, bs=64, validation_bs=64, bptt=70, **kwargs):
+    def from_dataframes(cls, path, field, col, gen_func, train_df_gen, val_df_gen, test_df_gen=None, bs=64, validation_bs=64, bptt=70, **kwargs):
         trn_ds, val_ds, test_ds = ConcatTextDatasetFromDataFrames.splits(
-            text_field=field, col=col, train_df=train_df, val_df=val_df, test_df=test_df, keep_nones=True)
+            text_field=field, col=col, gen_func=gen_func, train_df_gen=train_df_gen, val_df_gen=val_df_gen, test_df_gen=test_df_gen, keep_nones=True)
         return cls(path, field, trn_ds, val_ds, test_ds, bs, validation_bs, bptt, **kwargs)
 
     @classmethod
