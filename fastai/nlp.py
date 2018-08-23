@@ -181,7 +181,7 @@ class ConcatTextDatasetFromDataFrames(torchtext.data.Dataset):
         fields = [('text', text_field)]
         import logging
         logging.basicConfig(level = DEBUG)
-
+        logging.info("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!1")
         def preprocessed_data_gen(df_location):
             for df in create_df_gen_func(df_location):
                 text = []
