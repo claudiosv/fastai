@@ -4,6 +4,8 @@ from .torch_imports import *
 from .rnn_reg import LockedDropout,WeightDrop,EmbeddingDropout
 from .model import Stepper
 from .core import set_grad_enabled
+from .rnn_reg import LockedDropout, WeightDrop, EmbeddingDropout
+from .torch_imports import *
 
 IS_TORCH_04 = LooseVersion(torch.__version__) >= LooseVersion('0.4')
 
@@ -202,7 +204,7 @@ class SequentialRNN(nn.Sequential):
 
 
 def get_language_model(n_tok, emb_sz, n_hid, n_layers, pad_token,
-                 dropout=0.4, dropouth=0.3, dropouti=0.5, dropoute=0.1, wdrop=0.5, tie_weights=True, qrnn=False, bias=False):
+                 dropout=0.4, dropouth=0.3, dropouti=0.5, dropoute=0.1, wdrop=0.5, tie_weights=True, qrnn=False, bias=False, **kwargs):
     """Returns a SequentialRNN model.
 
     A RNN_Encoder layer is instantiated using the parameters provided.

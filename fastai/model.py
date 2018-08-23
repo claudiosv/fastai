@@ -1,3 +1,5 @@
+import logging
+
 from .fp16 import *
 from .swa import *
 
@@ -27,7 +29,7 @@ def num_features(m):
 def torch_item(x): return x.item() if hasattr(x,'item') else x[0]
 
 class Stepper():
-    def __init__(self, m, opt, crit, clip=0, reg_fn=None, fp16=False, loss_scale=1):
+    def __init__(self, m, opt, crit, clip=0, reg_fn=None, fp16=False, loss_scale=1, **kwargs):
         self.m,self.opt,self.crit,self.clip,self.reg_fn = m,opt,crit,clip,reg_fn
         self.fp16 = fp16
         self.reset(True)
@@ -164,7 +166,9 @@ def fit(model, data, n_epochs, opt, crit, metrics=None, callbacks=None, stepper=
                     break
 
         if not all_val:
-            vals = validate_with_cache(model_stepper, cur_data.val_dl, metrics)
+            logging.basicConfig(level=logging.DEBUG)
+            logging.info("Starting validation with cache")
+            vals = validate_with_cache(model_stepper, cur_data.val_dl, metrics, kwargs['text_field'])
             stop=False
             for cb in callbacks: stop = stop or cb.on_epoch_end(vals)
             if swa_model is not None:
@@ -219,6 +223,7 @@ class IterBatch():
 
 def validate_next(stepper, metrics, val_iter):
     """Computes the loss on the next minibatch of the validation set."""
+
     stepper.reset(False)
     with no_grad_context():
         (*x,y) = val_iter.next()
@@ -243,7 +248,8 @@ def one_hot(idx, size, cuda=False):
     return v
 
 
-def validate_with_cache(stepper, dl, metrics):
+def validate_with_cache(stepper, dl, metrics, text_field, theta=2, lambdah=0.2, window = 1000):
+    logging.info(f"Using theta: {theta}, lambdah: {lambdah}")
     batch_cnts, losses, res = [], [], []
     stepper.reset(False)
     with no_grad_context():
@@ -257,7 +263,6 @@ def validate_with_cache(stepper, dl, metrics):
             ntokens = preds.size(1)
             rnn_out = raw_outputs[-1].squeeze(1)  # from last layer
             output_flat = preds.view(-1, ntokens)
-            window = output_flat.size(0)
             # Fill pointer history
             start_idx = len(next_word_history) if next_word_history is not None else 0
             next_word_history = torch.cat(
@@ -276,11 +281,20 @@ def validate_with_cache(stepper, dl, metrics):
                     valid_next_word = next_word_history[start_idx + idx - window:start_idx + idx]
                     valid_pointer_history = pointer_history[start_idx + idx - window:start_idx + idx]
                     logits = torch.mv(valid_pointer_history, rnn_out[idx])
-                    theta = 0
                     ptr_attn = torch.nn.functional.softmax(theta * logits).view(-1, 1)
                     ptr_dist = (ptr_attn.expand_as(valid_next_word) * valid_next_word).sum(0).squeeze()
-                    lambdah = 0.5
                     p = lambdah * ptr_dist + (1 - lambdah) * vocab_loss
+                    index = targets[idx].data[0]
+                    logging.info(f"========================================")
+                    logging.info(f"Actual word: {text_field.vocab.itos[index]}")
+                    logging.info("From cache:")
+                    vals, indices = torch.topk(ptr_dist, 3)
+                    for c,i in zip(vals, indices):
+                        logging.info(f"{text_field.vocab.itos[i.data[0]]} ({c.data[0]})")
+                    logging.info("From nn:")
+                    vals, indices = torch.topk(vocab_loss, 3)
+                    for c,i in zip(vals, indices):
+                        logging.info(f"{text_field.vocab.itos[i.data[0]]} ({c.data[0]})")
                 ###
                 target_loss = p[targets[idx].data]
                 loss += (-torch.log(target_loss)).data[0]

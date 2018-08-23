@@ -1,22 +1,11 @@
-from .imports import *
-from .torch_imports import *
-from .core import *
-from .transforms import *
-from .model import *
-from .dataset import *
-from .sgdr import *
-from .layer_optimizer import *
-from .layers import *
-from .metrics import *
-from .losses import *
-from .swa import *
 from .fp16 import *
 from .lsuv_initializer import apply_lsuv_init
-import time
+from .model import *
+from .swa import *
 
 
 class Learner():
-    def __init__(self, data, models, opt_fn=None, tmp_name='tmp', models_name='models', metrics=None, clip=None, crit=None):
+    def __init__(self, data, models, opt_fn=None, tmp_name='tmp', models_name='models', metrics=None, clip=None, crit=None, **kwargs):
         """
         Combines a ModelData object with a nn.Module object, such that you can train that
         module.
@@ -39,6 +28,7 @@ class Learner():
         self.crit = crit if crit else self._get_crit(data)
         self.reg_fn = None
         self.fp16 = False
+        self.text_field = kwargs['text_field']
 
     @classmethod
     def from_model_data(cls, m, data, **kwargs):
@@ -247,7 +237,7 @@ class Learner():
         return fit(model, data, n_epoch, layer_opt.opt, self.crit,
             metrics=metrics, callbacks=callbacks, reg_fn=self.reg_fn, clip=self.clip, fp16=self.fp16,
             swa_model=self.swa_model if use_swa else None, swa_start=swa_start, 
-            swa_eval_freq=swa_eval_freq, **kwargs)
+            swa_eval_freq=swa_eval_freq, text_field=self.text_field, **kwargs)
 
     def get_layer_groups(self): return self.models.get_layer_groups()
 
