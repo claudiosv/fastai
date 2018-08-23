@@ -277,7 +277,7 @@ class LanguageModelData():
         """
         m = get_language_model(self.nt, emb_sz, n_hid, n_layers, self.pad_idx, **kwargs)
         model = SingleModel(to_gpu(m))
-        return RNN_Learner(self, model, opt_fn=opt_fn)
+        return RNN_Learner(self, model, opt_fn=opt_fn, **kwargs)
 
     @classmethod
     def from_dataframes(cls, path, field, col, gen_func, train_df_gen, val_df_gen, test_df_gen=None, bs=64, validation_bs=64, bptt=70, **kwargs):
