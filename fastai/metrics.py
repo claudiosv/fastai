@@ -8,13 +8,6 @@ from .torch_imports import *
 # *_np numpy preds/log_preds
 #
 
-def mrr_non_interactive(preds, targs):
-    summ = .0
-    total = to_np(preds).shape[0]
-    for pred, targ in zip(to_np(preds), to_np(targs)):
-        rank = find_sorted_array_position(pred, pred[targ])
-        summ += float(1) / rank
-    return summ / total
 def mrr(preds, targs):
     if isinstance(targs, Variable): targs = targs.data
     pred_values = preds.gather(1, targs.view(-1, 1))
@@ -90,7 +83,7 @@ def accuracy(preds, targs):
 
 def accuracy_np(preds, targs):
     preds = np.argmax(preds, 1)
-    return (preds==targs).mean()
+    return (preds == (targs.data if isinstance(targs, Variable) else targs)).float().mean()
 
 def accuracy_thresh(thresh):
     return lambda preds,targs: accuracy_multi(preds, targs, thresh)
@@ -147,5 +140,7 @@ def fbeta_np(preds, targs, beta, thresh=0.5, epsilon=1e-8):
 
 def f1(log_preds, targs, thresh=0.5): return fbeta(log_preds, targs, 1, thresh)
 def f1_np(preds, targs, thresh=0.5): return fbeta_np(preds, targs, 1, thresh)
+
+def f2(preds, targs): return fbeta(preds, targs, 2)
 
 def f2(preds, targs): return fbeta(preds, targs, 2)
