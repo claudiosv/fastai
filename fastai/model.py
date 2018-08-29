@@ -287,6 +287,10 @@ def validate_with_cache(stepper, dl, metrics, text_field, theta=2, lambdah=0.2, 
                     index = targets[idx].data[0]
                     logging.info(f"========================================")
                     logging.info(f"Actual word: {text_field.vocab.itos[index]}")
+                    logging.info("Result:")
+                    vals, indices = torch.topk(p, 3)
+                    for c, i in zip(vals, indices):
+                        logging.info(f"{text_field.vocab.itos[i.data[0]]} ({c.data[0]})")
                     logging.info("From cache:")
                     vals, indices = torch.topk(ptr_dist, 3)
                     for c,i in zip(vals, indices):
