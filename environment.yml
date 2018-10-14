@@ -60,6 +60,7 @@ dependencies:
 - pillow
 - pip
 - prompt_toolkit
+- psycopg2
 - pycparser
 - pygments
 - pyparsing
