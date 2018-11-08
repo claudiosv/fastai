@@ -231,7 +231,8 @@ class LanguageModelData():
             >> learner.fit(3e-3, 4, wds=1e-6, cycle_len=1, cycle_mult=2)
 
     """
-    def __init__(self, path, field, trn_ds, val_ds, test_ds, bs, validation_bs, bptt, backwards=False, only_build_vocab=False, **kwargs):
+
+    def __init__(self, path, field, trn_ds, val_ds, test_ds, bs, validation_bs, bptt, backwards=False, **kwargs):
         """ Constructor for the class. An important thing that happens here is
             that the field's "build_vocab" method is invoked, which builds the vocabulary
             for this NLP model.
@@ -254,16 +255,14 @@ class LanguageModelData():
         self.validation_bs = validation_bs
         self.path = path
         self.trn_ds = trn_ds; self.val_ds = val_ds; self.test_ds = test_ds
-        ds_list_for_vocab = [self.trn_ds, self.val_ds, self.test_ds] if only_build_vocab else [self.trn_ds]
-        if not hasattr(field, 'vocab'): field.build_vocab(*ds_list_for_vocab, **kwargs)
+        if not hasattr(field, 'vocab'): field.build_vocab(self.trn_ds, **kwargs)
 
         self.pad_idx = field.vocab.stoi[field.pad_token]
         self.nt = len(field.vocab)
         factory = lambda ds: LanguageModelLoader(ds, bs, bptt, backwards=backwards)
-        if not only_build_vocab:
-            self.trn_dl = factory(self.trn_ds)
-            self.val_dl = LanguageModelLoader(self.val_ds, validation_bs, bptt, backwards=backwards)
-            self.test_dl = map_none([self.test_ds], factory)  # not required
+        self.trn_dl = factory(self.trn_ds)
+        self.val_dl = LanguageModelLoader(self.val_ds, validation_bs, bptt, backwards=backwards)
+        self.test_dl = map_none([self.test_ds], factory)  # not required
 
     def get_model(self, opt_fn, emb_sz, n_hid, n_layers, **kwargs):
         """ Method returns a RNN_Learner object, that wraps an instance of the RNN_Encoder module.
@@ -284,10 +283,11 @@ class LanguageModelData():
         return RNN_Learner(self, model, opt_fn=opt_fn, **kwargs)
 
     @classmethod
-    def from_dataframes(cls, path, field, col, gen_func, train_df_gen, val_df_gen, test_df_gen=None, bs=64, validation_bs=64, bptt=70, only_build_vocab=False, **kwargs):
+    def from_dataframes(cls, path, field, col, gen_func, train_df_gen, val_df_gen, test_df_gen=None, bs=64,
+                        validation_bs=64, bptt=70, **kwargs):
         trn_ds, val_ds, test_ds = ConcatTextDatasetFromDataFrames.splits(
             text_field=field, col=col, gen_func=gen_func, train_df_gen=train_df_gen, val_df_gen=val_df_gen, test_df_gen=test_df_gen, keep_nones=True)
-        return cls(path, field, trn_ds, val_ds, test_ds, bs, validation_bs, bptt, only_build_vocab=only_build_vocab, **kwargs)
+        return cls(path, field, trn_ds, val_ds, test_ds, bs, validation_bs, bptt, **kwargs)
 
     @classmethod
     def from_text_files(cls, path, field, train, validation, test=None, bs=64, bptt=70, **kwargs):
