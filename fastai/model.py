@@ -167,8 +167,11 @@ def fit(model, data, n_epochs, opt, crit, metrics=None, callbacks=None, stepper=
 
         if not all_val:
             logging.basicConfig(level=logging.DEBUG)
-            logging.info("Starting validation with cache")
-            vals = validate_with_cache(model_stepper, cur_data.val_dl, metrics, kwargs['text_field'])
+            # logging.info("Starting validation with cache")
+            # vals = validate_with_cache(model_stepper, cur_data.val_dl, metrics, kwargs['text_field'])
+            logging.info("Starting validation withOUT cache")
+            vals = validate(model_stepper, cur_data.val_dl, metrics, epoch, seq_first=seq_first,
+                            validate_skip=validate_skip)
             stop=False
             for cb in callbacks: stop = stop or cb.on_epoch_end(vals)
             if swa_model is not None:
@@ -239,6 +242,17 @@ def batch_sz(x, seq_first=False):
 
 def validate(stepper, dl, metrics, epoch, seq_first=False, validate_skip = 0):
     if epoch < validate_skip: return [float('nan')] + [float('nan')] * len(metrics)
+    batch_cnts, loss, res = [], [], []
+    stepper.reset(False)
+    with no_grad_context():
+        for (*x, y) in iter(dl):
+            y = VV(y)
+            preds, l = stepper.evaluate(VV(x), y)
+            batch_cnts.append(batch_sz(x, seq_first=seq_first))
+            loss.append(to_np(l))
+            res.append([f(datafy(preds), datafy(y)) for f in metrics])
+    return [np.average(loss, 0, weights=batch_cnts)] + list(np.average(np.stack(res), 0, weights=batch_cnts))
+
 
 def one_hot(idx, size, cuda=False):
     a = np.zeros((1, size), np.float32)
@@ -393,18 +407,6 @@ def validate_with_cache(stepper, dl, metrics, text_field, theta=2, lambdah=0.0, 
 
     return [np.average(losses, 0, weights=seqs_in_batch_list)] + list(np.average(np.stack(res), 0, weights=bptts))
 
-
-def validate(stepper, dl, metrics, seq_first=False):
-    batch_cnts,loss,res = [],[],[]
-    stepper.reset(False)
-    with no_grad_context():
-        for (*x,y) in iter(dl):
-            y = VV(y)
-            preds, l = stepper.evaluate(VV(x), y)
-            batch_cnts.append(batch_sz(x, seq_first=seq_first))
-            loss.append(to_np(l))
-            res.append([f(datafy(preds), datafy(y)) for f in metrics])
-    return [np.average(loss, 0, weights=batch_cnts)] + list(np.average(np.stack(res), 0, weights=batch_cnts))
 
 def get_prediction(x):
     if is_listy(x): x=x[0]
