@@ -5,6 +5,8 @@ from .swa import *
 
 IS_TORCH_04 = LooseVersion(torch.__version__) >= LooseVersion('0.4')
 
+logger = logging.getLogger(__name__)
+
 def cut_model(m, cut):
     return list(m.children())[:cut] if cut else [m]
 
@@ -106,6 +108,7 @@ def fit(model, data, n_epochs, opt, crit, metrics=None, callbacks=None, stepper=
        crit: loss function to optimize. Example: F.cross_entropy
     """
 
+    file_path = kwargs.pop('file', '')
     seq_first = kwargs.pop('seq_first', False)
     all_val = kwargs.pop('all_val', False)
     get_ep_vals = kwargs.pop('get_ep_vals', False)
@@ -132,14 +135,15 @@ def fit(model, data, n_epochs, opt, crit, metrics=None, callbacks=None, stepper=
     tot_epochs = int(np.ceil(np.array(n_epochs).sum()))
     cnt_phases = np.array([ep * len(dat.trn_dl) for (ep,dat) in zip(n_epochs,data)]).cumsum()
     phase = 0
-    for epoch in tnrange(tot_epochs, desc='Epoch'):
+    file = open(file_path, 'w+')
+    for epoch in tnrange(tot_epochs, desc='Epoch', file=file):
         if phase >= len(n_epochs): break #Sometimes cumulated errors make this append.
         model_stepper.reset(True)
         cur_data = data[phase]
         if hasattr(cur_data, 'trn_sampler'): cur_data.trn_sampler.set_epoch(epoch)
         if hasattr(cur_data, 'val_sampler'): cur_data.val_sampler.set_epoch(epoch)
         num_batch = len(cur_data.trn_dl)
-        t = tqdm(iter(cur_data.trn_dl), leave=False, total=num_batch, miniters=0)
+        t = tqdm(iter(cur_data.trn_dl), leave=False, total=num_batch, miniters=0, file=file)
         if all_val: val_iter = IterBatch(cur_data.val_dl)
 
         for (*x,y) in t:
@@ -183,11 +187,12 @@ def fit(model, data, n_epochs, opt, crit, metrics=None, callbacks=None, stepper=
             if epoch > 0:
                 print_stats(epoch, [debias_loss] + vals, visualize, prev_val)
             else:
-                print(layout.format(*names))
+                logger.info(layout.format(*names))
                 print_stats(epoch, [debias_loss] + vals, visualize)
             prev_val = [debias_loss] + vals
             ep_vals = append_stats(ep_vals, epoch, [debias_loss] + vals)
         if stop: break
+    file.close()
     for cb in callbacks: cb.on_train_end()
     if get_ep_vals: return vals, ep_vals
     else: return vals
@@ -206,7 +211,7 @@ def print_stats(epoch, values, visualize, prev_val=[], decimals=6):
         elif values[1] > prev_val[0] and values[2] < prev_val[1]:  sym = " △ ▼"
         elif values[1] < prev_val[0] and values[2] > prev_val[1]:  sym = " ▼ △"
         elif values[1] < prev_val[0] and values[2] < prev_val[1]:  sym = " ▼ ▼"
-    print(layout.format(*values) + sym)
+    logger.info(layout.format(*values) + sym)
 
 class IterBatch():
     def __init__(self, dl):
