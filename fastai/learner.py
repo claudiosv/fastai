@@ -28,7 +28,7 @@ class Learner():
         self.crit = crit if crit else self._get_crit(data)
         self.reg_fn = None
         self.fp16 = False
-        self.text_field = kwargs['text_field']
+        self.text_field = kwargs['text_field'] if "text_field" in kwargs else None
 
     @classmethod
     def from_model_data(cls, m, data, **kwargs):
