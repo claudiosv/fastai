@@ -108,7 +108,7 @@ def fit(model, data, n_epochs, opt, crit, metrics=None, callbacks=None, stepper=
        crit: loss function to optimize. Example: F.cross_entropy
     """
 
-    file_path = kwargs.pop('file', '')
+    file = kwargs.pop('file', None)
     seq_first = kwargs.pop('seq_first', False)
     all_val = kwargs.pop('all_val', False)
     get_ep_vals = kwargs.pop('get_ep_vals', False)
@@ -137,7 +137,6 @@ def fit(model, data, n_epochs, opt, crit, metrics=None, callbacks=None, stepper=
     tot_epochs = int(np.ceil(np.array(n_epochs).sum()))
     cnt_phases = np.array([ep * len(dat.trn_dl) for (ep,dat) in zip(n_epochs,data)]).cumsum()
     phase = 0
-    file = open(file_path, 'w+')
     for epoch in tnrange(tot_epochs, desc='Epoch', file=file):
         if phase >= len(n_epochs): break #Sometimes cumulated errors make this append.
         model_stepper.reset(True)
@@ -192,7 +191,8 @@ def fit(model, data, n_epochs, opt, crit, metrics=None, callbacks=None, stepper=
             prev_val = [debias_loss] + vals
             ep_vals = append_stats(ep_vals, epoch, [debias_loss] + vals)
         if stop: break
-    file.close()
+    if file:
+        file.close()
     for cb in callbacks: cb.on_train_end()
     if get_ep_vals: return vals, ep_vals
     else: return vals
