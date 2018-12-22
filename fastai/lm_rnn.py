@@ -234,8 +234,9 @@ def get_language_model(n_tok, emb_sz, n_hid, n_layers, pad_token,
     Returns:
         A SequentialRNN model
     """
+    bidir = kwargs.pop('bidir', False)
     rnn_enc = RNN_Encoder(n_tok, emb_sz, n_hid=n_hid, n_layers=n_layers, pad_token=pad_token,
-                 dropouth=dropouth, dropouti=dropouti, dropoute=dropoute, wdrop=wdrop, qrnn=qrnn)
+                          dropouth=dropouth, dropouti=dropouti, dropoute=dropoute, wdrop=wdrop, qrnn=qrnn, bidir=bidir)
     enc = rnn_enc.encoder if tie_weights else None
     return SequentialRNN(rnn_enc, LinearDecoder(n_tok, emb_sz, dropout, tie_encoder=enc, bias=bias))
 
