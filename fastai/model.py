@@ -115,6 +115,7 @@ def fit(model, data, n_epochs, opt, crit, metrics=None, callbacks=None, stepper=
     validate_skip = kwargs.pop('validate_skip', 0)
     valid_func = kwargs.pop('valid_func', validate)
     text_field = kwargs.pop('text_field', None)
+    only_validation = kwargs.pop('only_validation', False)
     metrics = metrics or []
     callbacks = callbacks or []
     avg_mom=0.98
@@ -147,6 +148,9 @@ def fit(model, data, n_epochs, opt, crit, metrics=None, callbacks=None, stepper=
         t = tqdm(iter(cur_data.trn_dl), leave=False, total=num_batch, miniters=0, file=file)
         if all_val: val_iter = IterBatch(cur_data.val_dl)
 
+        if only_validation:
+            t = []
+            debias_loss = 0.0
         for (*x,y) in t:
             batch_num += 1
             for cb in callbacks: cb.on_batch_begin()
