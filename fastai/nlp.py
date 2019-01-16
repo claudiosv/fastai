@@ -362,10 +362,8 @@ class TextData(ModelData):
         return RNN_Learner(self, model, opt_fn=opt_fn)
 
     def get_model(self, opt_fn, max_sl, bptt, emb_sz, n_hid, n_layers, dropout, **kwargs):
-        context_sides = kwargs.pop('context_sides', 2)
         m = get_rnn_classifier(bptt, max_sl, self.c, self.nt,
-                               layers=[emb_sz * 3 * context_sides, self.c], drops=[dropout],
-                               emb_sz=emb_sz, n_hid=n_hid, n_layers=n_layers, pad_token=self.pad_idx,
-                               context_sides=context_sides, **kwargs)
+              layers=[emb_sz*3, self.c], drops=[dropout],
+              emb_sz=emb_sz, n_hid=n_hid, n_layers=n_layers, pad_token=self.pad_idx, **kwargs)
         return self.to_model(m, opt_fn)
 

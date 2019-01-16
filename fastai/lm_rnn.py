@@ -124,50 +124,27 @@ class RNN_Encoder(nn.Module):
         self.weights = next(self.parameters()).data
         if self.qrnn: self.hidden = [self.one_hidden(l) for l in range(self.n_layers)]
         else: self.hidden = [(self.one_hidden(l), self.one_hidden(l)) for l in range(self.n_layers)]
-        if self.qrnn:
-            self.hidden2 = [self.one_hidden(l) for l in range(self.n_layers)]
-        else:
-            self.hidden2 = [(self.one_hidden(l), self.one_hidden(l)) for l in range(self.n_layers)]
 
 
 class MultiBatchRNN(RNN_Encoder):
     def __init__(self, bptt, max_seq, *args, **kwargs):
         self.max_seq,self.bptt = max_seq,bptt
-        self.context_sides = kwargs.pop('context_sides', None)
         super().__init__(*args, **kwargs)
 
-    def concat(self, arrs, dim=0):
-        return [torch.cat([l[si] for l in arrs], dim) for si in range(len(arrs[0]))]
+    def concat(self, arrs):
+        return [torch.cat([l[si] for l in arrs]) for si in range(len(arrs[0]))]
 
     def forward(self, input):
-        sl = input.size()[0] // self.context_sides
-        input_before, input_after = input[:sl], input[sl:]
-
+        sl,bs = input.size()
         for l in self.hidden:
             for h in l: h.data.zero_()
         raw_outputs, outputs = [],[]
         for i in range(0, sl, self.bptt):
-            r, o = super().forward(input_before[i: min(i + self.bptt, sl)])
+            r, o = super().forward(input[i: min(i+self.bptt, sl)])
             if i>(sl-self.max_seq):
                 raw_outputs.append(r)
                 outputs.append(o)
-
-        concat_rs = self.concat(raw_outputs)
-        concat_os = self.concat(outputs)
-
-        for l in self.hidden2:
-            for h in l: h.data.zero_()
-        raw_outputs2, outputs2 = [], []
-        for i in range(0, sl, self.bptt):
-            r2, o2 = super().forward(input_after[i: min(i + self.bptt, sl)])
-            if i > (sl - self.max_seq):
-                raw_outputs2.append(r2)
-                outputs2.append(o2)
-
-        concat_rs2 = self.concat(raw_outputs2)
-        concat_os2 = self.concat(outputs2)
-
-        return self.concat([concat_rs, concat_rs2], 2), self.concat([concat_os, concat_os2], 2)
+        return self.concat(raw_outputs), self.concat(outputs)
 
 class LinearDecoder(nn.Module):
     initrange=0.1
@@ -264,12 +241,10 @@ def get_language_model(n_tok, emb_sz, n_hid, n_layers, pad_token,
     return SequentialRNN(rnn_enc, LinearDecoder(n_tok, emb_sz, dropout, tie_encoder=enc, bias=bias))
 
 
-def get_rnn_classifier(bptt, max_seq, n_class, n_tok, emb_sz, n_hid, n_layers, pad_token, layers, drops, context_sides,
-                       bidir=False,
-                       dropouth=0.3, dropouti=0.5, dropoute=0.1, wdrop=0.5, qrnn=False):
+def get_rnn_classifier(bptt, max_seq, n_class, n_tok, emb_sz, n_hid, n_layers, pad_token, layers, drops, bidir=False,
+                      dropouth=0.3, dropouti=0.5, dropoute=0.1, wdrop=0.5, qrnn=False):
     rnn_enc = MultiBatchRNN(bptt, max_seq, n_tok, emb_sz, n_hid, n_layers, pad_token=pad_token, bidir=bidir,
-                            dropouth=dropouth, dropouti=dropouti, dropoute=dropoute, wdrop=wdrop, qrnn=qrnn,
-                            context_sides=context_sides)
+                      dropouth=dropouth, dropouti=dropouti, dropoute=dropoute, wdrop=wdrop, qrnn=qrnn)
     return SequentialRNN(rnn_enc, PoolingLinearClassifier(layers, drops))
 
 get_rnn_classifer=get_rnn_classifier
