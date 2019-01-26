@@ -142,7 +142,7 @@ class LanguageModelLoader():
         res = self.get_batch(self.i, seq_len)
         self.i += seq_len
         self.iter += 1
-        return to_gpu(res)
+        return res
 
     def batchify(self, data):
         nb = data.size(0) // self.bs
@@ -154,7 +154,7 @@ class LanguageModelLoader():
     def get_batch(self, i, seq_len):
         source = self.data
         seq_len = min(seq_len, len(source) - 1 - i)
-        return source[i:i+seq_len], source[i+1:i+1+seq_len].view(-1)
+        return to_gpu(source[i:i + seq_len]), to_gpu(source[i + 1:i + 1 + seq_len].view(-1))
 
 
 class RNN_Learner(Learner):
