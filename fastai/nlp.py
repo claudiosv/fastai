@@ -142,14 +142,14 @@ class LanguageModelLoader():
         res = self.get_batch(self.i, seq_len)
         self.i += seq_len
         self.iter += 1
-        return res
+        return to_gpu(res)
 
     def batchify(self, data):
         nb = data.size(0) // self.bs
         data = data[:nb*self.bs]
         data = data.view(self.bs, -1).t().contiguous()
         if self.backwards: data=flip_tensor(data, 0)
-        return to_gpu(data)
+        return data
 
     def get_batch(self, i, seq_len):
         source = self.data
