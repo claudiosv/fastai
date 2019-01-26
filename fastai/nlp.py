@@ -1,4 +1,6 @@
-from logging import DEBUG
+from typing import Optional, Generator
+
+from pandas import DataFrame
 
 from fastai.dataloader import DataLoader
 from fastai.dataset import ModelData
@@ -114,11 +116,13 @@ def flip_tensor(x, dim):
 
 class LanguageModelLoader():
 
-    def __init__(self, ds, bs, bptt, backwards=False):
+    def __init__(self, ds_gen, bs, bptt, backwards=False):
         self.bs,self.bptt,self.backwards = bs,bptt,backwards
-        text = sum([o.text for o in ds], [])
-        fld = ds.fields['text']
-        nums = fld.numericalize([text],device=None if torch.cuda.is_available() else -1)
+        nums = None
+        for ds in ds_gen:
+            fld = ds.fields['text']
+            nums_chunk = fld.numericalize([d.text for d in ds], device=None if torch.cuda.is_available() else -1)
+            nums = torch.cat([nums, nums_chunk]) if nums is not None else nums_chunk
         self.data = self.batchify(nums)
         self.i,self.iter = 0,0
         self.n = len(self.data)
@@ -177,15 +181,10 @@ class ConcatTextDataset(torchtext.data.Dataset):
 
 
 class ConcatTextDatasetFromDataFrames(torchtext.data.Dataset):
-    def __init__(self, df, text_field, col, newline_eos=True, **kwargs):
+    def __init__(self, df: DataFrame, text_field, col, newline_eos=True, **kwargs):
         fields = [('text', text_field)]
         text = []
-        import logging
-        logging.basicConfig(level = DEBUG)
-
-        logging.info("Starting preprocessing")
         text += text_field.preprocess(df[col].str.cat(sep=' <eos> '))
-        logging.info("StarFinishedting preprocessing")
         if (newline_eos): text.append('<eos>')
 
         examples = [torchtext.data.Example.fromlist([text], fields)]
@@ -194,10 +193,15 @@ class ConcatTextDatasetFromDataFrames(torchtext.data.Dataset):
 
     @classmethod
     def splits(cls, train_df=None, val_df=None, test_df=None, keep_nones=False, **kwargs):
+
+        def class_generator(df_gen):
+            for df in df_gen:
+                yield cls(df, **kwargs)
+
         res = (
-            cls(train_df, **kwargs),
-            cls(val_df, **kwargs),
-            map_none(test_df, partial(cls, **kwargs)))  # not required
+            class_generator(train_df),
+            class_generator(val_df),
+            map_none(test_df, class_generator))  # not required
         return res if keep_nones else tuple(d for d in res if d is not None)
 
 
@@ -219,7 +223,7 @@ class LanguageModelData():
             >> nh = 500     # number of hidden activations per layer
             >> nl = 3       # number of layers
 
-            >> opt_fn = partial(optim.Adam, betas=(0.7, 0.99))
+            >> opt_fn = partial(optim.Adam, adam_betas=(0.7, 0.99))
             >> learner = md.get_model(opt_fn, em_sz, nh, nl,
                            dropouti=0.05, dropout=0.05, wdrop=0.1, dropoute=0.02, dropouth=0.05)
             >> learner.reg_fn = seq2seq_reg
@@ -229,7 +233,11 @@ class LanguageModelData():
 
     """
 
-    def __init__(self, path, field, trn_ds, val_ds, test_ds, bs, validation_bs, bptt, backwards=False, **kwargs):
+    def __init__(self, path, field,
+                 trn_ds_gen: Generator[ConcatTextDatasetFromDataFrames, None, None],
+                 val_ds_gen: Generator[ConcatTextDatasetFromDataFrames, None, None],
+                 test_ds_gen: Generator[ConcatTextDatasetFromDataFrames, None, None],
+                 bs, validation_bs, bptt, backwards=False, **kwargs):
         """ Constructor for the class. An important thing that happens here is
             that the field's "build_vocab" method is invoked, which builds the vocabulary
             for this NLP model.
@@ -251,15 +259,18 @@ class LanguageModelData():
         self.bs = bs
         self.validation_bs = validation_bs
         self.path = path
-        self.trn_ds = trn_ds; self.val_ds = val_ds; self.test_ds = test_ds
-        if not hasattr(field, 'vocab'): field.build_vocab(self.trn_ds, **kwargs)
+        self.trn_ds_gen = trn_ds_gen
+        self.val_ds_gen = val_ds_gen
+        self.test_ds_gen = test_ds_gen
+        if not hasattr(field, 'vocab'):
+            raise AssertionError("Field with build should have been already preloaded!")
 
         self.pad_idx = field.vocab.stoi[field.pad_token]
         self.nt = len(field.vocab)
-        factory = lambda ds: LanguageModelLoader(ds, bs, bptt, backwards=backwards)
-        self.trn_dl = factory(self.trn_ds)
-        self.val_dl = LanguageModelLoader(self.val_ds, validation_bs, bptt, backwards=backwards)
-        self.test_dl = map_none(self.test_ds, factory)  # not required
+        factory = lambda ds_gen: LanguageModelLoader(ds_gen, bs, bptt, backwards=backwards)
+        self.trn_dl = factory(self.trn_ds_gen)
+        self.val_dl = LanguageModelLoader(self.val_ds_gen, validation_bs, bptt, backwards=backwards)
+        self.test_dl = map_none(self.test_ds_gen, factory)  # not required
 
     def get_model(self, opt_fn, emb_sz, n_hid, n_layers, **kwargs):
         """ Method returns a RNN_Learner object, that wraps an instance of the RNN_Encoder module.
@@ -280,10 +291,14 @@ class LanguageModelData():
         return RNN_Learner(self, model, opt_fn=opt_fn, **kwargs)
 
     @classmethod
-    def from_dataframes(cls, path, field, col, train_df, val_df, test_df=None, bs=64, validation_bs=64, bptt=70, **kwargs):
-        trn_ds, val_ds, test_ds = ConcatTextDatasetFromDataFrames.splits(
+    def from_dataframes(cls, path, field, col,
+                        train_df: Optional[Generator[DataFrame, None, None]],
+                        val_df: Generator[DataFrame, None, None],
+                        test_df: Optional[Generator[DataFrame, None, None]] = None,
+                        bs: int = 64, validation_bs: int = 64, bptt: int = 70, **kwargs):
+        trn_ds_gen, val_ds_gen, test_ds_gen = ConcatTextDatasetFromDataFrames.splits(
             text_field=field, col=col, train_df=train_df, val_df=val_df, test_df=test_df, keep_nones=True)
-        return cls(path, field, trn_ds, val_ds, test_ds, bs, validation_bs, bptt, **kwargs)
+        return cls(path, field, trn_ds_gen, val_ds_gen, test_ds_gen, bs, validation_bs, bptt, **kwargs)
 
     @classmethod
     def from_text_files(cls, path, field, train, validation, test=None, bs=64, bptt=70, **kwargs):
