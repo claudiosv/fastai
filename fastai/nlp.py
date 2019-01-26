@@ -8,6 +8,7 @@ from fastai.metrics import accuracy_thresh
 from .lm_rnn import *
 from .text import *
 
+logger = logging.getLogger(__name__)
 
 class DotProdNB(nn.Module):
     def __init__(self, nf, ny, w_adj=0.4, r_adj=10):
@@ -121,8 +122,9 @@ class LanguageModelLoader():
         nums = None
         for ds in ds_gen:
             fld = ds.fields['text']
-            nums_chunk = fld.numericalize([d.text for d in ds], device=None if torch.cuda.is_available() else -1)
+            nums_chunk = fld.numericalize([d.text for d in ds], device=-1)
             nums = torch.cat([nums, nums_chunk]) if nums is not None else nums_chunk
+        logger.debug(f'Variable size: {nums.size()}')
         self.data = self.batchify(nums)
         self.i,self.iter = 0,0
         self.n = len(self.data)
