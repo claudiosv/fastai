@@ -85,7 +85,7 @@ class Stepper():
         preds, raw_outputs, _ = preds
         if not isinstance(raw_outputs, list):
             raise AssertionError("Raw output should be a list!")
-        return preds, raw_outputs, self.crit(preds, y), y
+        return preds, raw_outputs, self.crit(preds, y)
 
 def set_train_mode(m):
     if (hasattr(m, 'running_mean') and (getattr(m,'bn_freeze',False)
@@ -114,7 +114,6 @@ def fit(model, data, n_epochs, opt, crit, metrics=None, callbacks=None, stepper=
     get_ep_vals = kwargs.pop('get_ep_vals', False)
     validate_skip = kwargs.pop('validate_skip', 0)
     valid_func = kwargs.pop('valid_func', validate)
-    text_field = kwargs.pop('text_field', None)
     only_validation = kwargs.pop('only_validation', False)
     metrics = metrics or []
     callbacks = callbacks or []
@@ -178,7 +177,7 @@ def fit(model, data, n_epochs, opt, crit, metrics=None, callbacks=None, stepper=
             logging.basicConfig(level=logging.DEBUG)
             logging.info("Starting validation")
             vals = valid_func(model_stepper, cur_data.val_dl, metrics, epoch, seq_first=seq_first,
-                              validate_skip=validate_skip, text_field=text_field)
+                              validate_skip=validate_skip)
             stop=False
             for cb in callbacks: stop = stop or cb.on_epoch_end(vals)
             if swa_model is not None:
@@ -250,7 +249,7 @@ def batch_sz(x, seq_first=False):
     return x.shape[1 if seq_first else 0]
 
 
-def validate(stepper, dl, metrics, epoch, seq_first=False, validate_skip=0, text_field=None):
+def validate(stepper, dl, metrics, epoch, seq_first=False, validate_skip=0):
     if epoch < validate_skip: return [float('nan')] + [float('nan')] * len(metrics)
     batch_cnts, loss, res = [], [], []
     stepper.reset(False)
